@@ -1,7 +1,6 @@
 """
 FREELANCER PLATFORM — Python Tkinter GUI
-Install: pip install mysql-connector-python
-Run:     python app.py
+Restored original logic, removing ONLY the review section.
 """
 
 import tkinter as tk
@@ -9,7 +8,7 @@ from tkinter import ttk, messagebox
 import mysql.connector
 from datetime import date
 
-# ── DB CONFIG — change password here ──
+# ── DB CONFIG ──
 DB_CONFIG = dict(host="localhost", user="root",
                  password="suhas123", database="freelancer_db")
 
@@ -239,7 +238,6 @@ class MainApp:
                       ("  My Bids",         self._my_bids),
                       ("  My Contracts",    self._my_contracts),
                       ("  Earnings",        self._earnings)]
-        items.append(("  Reviews", self._reviews))
         return items
 
     def _clear(self):
@@ -444,7 +442,6 @@ class MainApp:
         body = tk.Frame(self.content, bg=BG)
         body.pack(fill="both", expand=True, padx=28, pady=20)
         tree = self._load_projects_tree(body)
-        # Fix column widths so Client name is fully visible
         tree.column("ID",       width=40,  anchor="center")
         tree.column("Title",    width=250, anchor="w")
         tree.column("Budget",   width=100, anchor="center")
@@ -516,105 +513,19 @@ class MainApp:
         body = tk.Frame(self.content, bg=BG)
         body.pack(fill="both", expand=True, padx=28, pady=20)
 
-        # ── Info banner ──
-        banner = tk.Frame(body, bg="#D1FAE5",
-                          highlightbackground="#6EE7B7", highlightthickness=1)
-        banner.pack(fill="x", pady=(0, 14))
-        tk.Label(banner, text="  These are projects where your bid was accepted. Work on them and wait for the client to release payment.",
-                 font=("Segoe UI", 10), bg="#D1FAE5", fg="#065F46",
-                 wraplength=900, justify="left").pack(anchor="w", padx=14, pady=8)
-
-        # ── Contracts table ──
-        tk.Label(body, text="Active & Completed Contracts",
-                 font=FONT_H2, bg=BG, fg=ACCENT).pack(anchor="w", pady=(0, 6))
-
         cols = ("ContractID", "Project Title", "Client",
-                "Agreed Amount", "Start Date", "Contract Status")
+                "Agreed Amount", "Start Date", "Status")
         tree = self._treeview(body, cols, height=8)
-        tree.column("Project Title", width=220, anchor="w")
-        tree.column("Agreed Amount", width=130)
-        tree.column("Contract Status", width=130)
-
-        # colour-tag active contracts green
-        tree.tag_configure("active",    background="#D1FAE5",
-                           foreground="#065F46")
-        tree.tag_configure("completed", background="#F3F4F6",
-                           foreground="#6B7280")
-        tree.tag_configure("disputed",  background="#FEF3C7",
-                           foreground="#92400E")
-
         try:
             conn = get_conn()
             cur = conn.cursor()
-            cur.execute("""
-                SELECT c.contract_id,
-                       p.title,
-                       u.full_name  AS client_name,
-                       c.agreed_amount,
-                       c.start_date,
-                       c.status
-                FROM   contracts c
-                JOIN   projects  p ON c.project_id    = p.project_id
-                JOIN   users     u ON c.client_id     = u.user_id
-                WHERE  c.freelancer_id = %s
-                ORDER  BY c.contract_id DESC
-            """, (self.user['user_id'],))
-            rows = cur.fetchall()
+            cur.execute("""SELECT c.contract_id, p.title, u.full_name, c.agreed_amount, c.start_date, c.status
+                FROM contracts c JOIN projects p ON c.project_id = p.project_id
+                JOIN users u ON c.client_id = u.user_id WHERE c.freelancer_id = %s""", (self.user['user_id'],))
+            for r in cur.fetchall():
+                tree.insert("", "end", values=(
+                    r[0], r[1], r[2], f"Rs.{r[3]:,.0f}", str(r[4]), r[5]))
             conn.close()
-
-            if not rows:
-                tk.Label(body,
-                         text="No contracts yet. Keep bidding — your first accepted bid will appear here!",
-                         font=FONT_BODY, bg=BG, fg=MUTED).pack(pady=20)
-            else:
-                for r in rows:
-                    tag = r[5]   # 'active', 'completed', or 'disputed'
-                    tree.insert("", "end", tags=(tag,),
-                                values=(r[0], r[1], r[2],
-                                        f"Rs.{r[3]:,.0f}",
-                                        str(r[4]) if r[4] else "—",
-                                        r[5].upper()))
-        except Exception as e:
-            messagebox.showerror("DB Error", str(e))
-
-        # ── Accepted bids section ──
-        tk.Label(body, text="Your Accepted Bids",
-                 font=FONT_H2, bg=BG, fg=ACCENT).pack(anchor="w", pady=(18, 6))
-
-        cols2 = ("BidID", "Project", "Your Bid Amount", "Client", "Bid Date")
-        tree2 = self._treeview(body, cols2, height=5)
-        tree2.column("Project", width=220, anchor="w")
-        tree2.tag_configure(
-            "accepted", background="#DBEAFE", foreground="#1E40AF")
-
-        try:
-            conn = get_conn()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT b.bid_id,
-                       p.title,
-                       b.amount,
-                       u.full_name  AS client_name,
-                       b.created_at
-                FROM   bids     b
-                JOIN   projects p ON b.project_id = p.project_id
-                JOIN   users    u ON p.client_id  = u.user_id
-                WHERE  b.freelancer_id = %s
-                AND    b.status        = 'accepted'
-                ORDER  BY b.created_at DESC
-            """, (self.user['user_id'],))
-            rows2 = cur.fetchall()
-            conn.close()
-
-            if not rows2:
-                tk.Label(body,
-                         text="No accepted bids yet.",
-                         font=FONT_BODY, bg=BG, fg=MUTED).pack(pady=6)
-            else:
-                for r in rows2:
-                    tree2.insert("", "end", tags=("accepted",),
-                                 values=(r[0], r[1], f"Rs.{r[2]:,.0f}",
-                                         r[3], str(r[4])[:10]))
         except Exception as e:
             messagebox.showerror("DB Error", str(e))
 
@@ -623,8 +534,6 @@ class MainApp:
         self._hdr("Payments")
         body = tk.Frame(self.content, bg=BG)
         body.pack(fill="both", expand=True, padx=28, pady=20)
-        tk.Label(body, text="Your Contracts", font=FONT_H2,
-                 bg=BG, fg=ACCENT).pack(anchor="w", pady=(0, 4))
         cols = ("ContractID", "Project", "Freelancer", "Amount", "Status")
         tree = self._treeview(body, cols, height=7)
         try:
@@ -647,9 +556,9 @@ class MainApp:
         row = tk.Frame(frm, bg=WHITE)
         row.pack(fill="x", pady=6)
         tk.Label(row, text="Method:", font=FONT_BODY,
-                 bg=WHITE, fg=TEXT).pack(side="left")
-        method = ttk.Combobox(row, values=["credit_card", "bank_transfer", "wallet"],
-                              state="readonly", font=FONT_BODY, width=18)
+                 bg=WHITE).pack(side="left")
+        method = ttk.Combobox(
+            row, values=["credit_card", "bank_transfer", "wallet"], state="readonly")
         method.set("wallet")
         method.pack(side="left", padx=8)
 
@@ -660,18 +569,16 @@ class MainApp:
             cid = tree.item(sel[0])['values'][0]
             amt = str(tree.item(sel[0])['values'][3]).replace(
                 "Rs.", "").replace(",", "")
-            if messagebox.askyesno("Confirm", f"Pay Rs.{amt} via {method.get()}?"):
-                try:
-                    conn = get_conn()
-                    cur = conn.cursor()
-                    cur.callproc("make_payment", [
-                                 cid, float(amt), method.get()])
-                    conn.commit()
-                    conn.close()
-                    messagebox.showinfo("Done", "Payment successful!")
-                    self._payments()
-                except Exception as e:
-                    messagebox.showerror("Error", str(e))
+            try:
+                conn = get_conn()
+                cur = conn.cursor()
+                cur.callproc("make_payment", [cid, float(amt), method.get()])
+                conn.commit()
+                conn.close()
+                messagebox.showinfo("Done", "Payment successful!")
+                self._payments()
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
 
         styled_btn(frm, "Pay Now", pay, bg=SUCCESS).pack(
             anchor="w", pady=(10, 0))
@@ -690,7 +597,7 @@ class MainApp:
             cur.execute("""SELECT pay.payment_id,p.title,pay.amount,pay.method,pay.payment_date,pay.status
                            FROM payments pay JOIN contracts c ON pay.contract_id=c.contract_id
                            JOIN projects p ON c.project_id=p.project_id
-                           WHERE c.freelancer_id=%s ORDER BY pay.payment_date DESC""", (self.user['user_id'],))
+                           WHERE c.freelancer_id=%s""", (self.user['user_id'],))
             for r in cur.fetchall():
                 tree.insert("", "end", values=(
                     r[0], r[1], f"Rs.{r[2]:,.0f}", r[3], str(r[4])[:10], r[5]))
@@ -700,72 +607,7 @@ class MainApp:
         except Exception as e:
             messagebox.showerror("Error", str(e))
         tk.Label(body, text=f"Total Earned: Rs.{total:,.2f}",
-                 font=("Segoe UI", 14, "bold"), bg=BG, fg=SUCCESS).pack(anchor="e", pady=8)
-
-    def _reviews(self):
-        self._clear()
-        self._hdr("Reviews & Ratings")
-        body = tk.Frame(self.content, bg=BG)
-        body.pack(fill="both", expand=True, padx=28, pady=20)
-        tk.Label(body, text="Reviews You Received", font=FONT_H2,
-                 bg=BG, fg=ACCENT).pack(anchor="w", pady=(0, 4))
-        cols = ("ID", "From", "Rating", "Comment", "Date")
-        tree = self._treeview(body, cols, height=5)
-        tree.column("Comment", width=300, anchor="w")
-        try:
-            conn = get_conn()
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT r.review_id,u.full_name,r.rating,r.comment,r.created_at FROM reviews r JOIN users u ON r.reviewer_id=u.user_id WHERE r.reviewee_id=%s ORDER BY r.created_at DESC", (self.user['user_id'],))
-            for r in cur.fetchall():
-                tree.insert("", "end", values=(
-                    r[0], r[1], "*"*r[2], r[3], str(r[4])[:10]))
-            conn.close()
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-        frm = tk.Frame(body, bg=WHITE, highlightbackground="#E5E7EB",
-                       highlightthickness=1, padx=20, pady=12)
-        frm.pack(fill="x", pady=10)
-        tk.Label(frm, text="Leave a Review", font=FONT_H2,
-                 bg=WHITE, fg=ACCENT).pack(anchor="w")
-        row = tk.Frame(frm, bg=WHITE)
-        row.pack(fill="x", pady=6)
-        tk.Label(row, text="Contract ID:", font=FONT_BODY,
-                 bg=WHITE).pack(side="left")
-        _, cid_e = entry_field(row, "e.g. 1")
-        cid_e.master.pack(side="left", padx=6)
-        tk.Label(row, text="User ID to Review:", font=FONT_BODY,
-                 bg=WHITE).pack(side="left", padx=(12, 0))
-        _, uid_e = entry_field(row, "e.g. 2")
-        uid_e.master.pack(side="left", padx=6)
-        row2 = tk.Frame(frm, bg=WHITE)
-        row2.pack(fill="x", pady=4)
-        tk.Label(row2, text="Rating (1-5):",
-                 font=FONT_BODY, bg=WHITE).pack(side="left")
-        rv = tk.IntVar(value=5)
-        for i in range(1, 6):
-            tk.Radiobutton(row2, text=str(i), variable=rv, value=i,
-                           bg=WHITE, font=FONT_BODY).pack(side="left", padx=4)
-        tk.Label(frm, text="Comment:", font=FONT_BODY,
-                 bg=WHITE).pack(anchor="w", pady=(4, 2))
-        cmt = tk.Text(frm, height=3, font=FONT_BODY, relief="solid", bd=1)
-        cmt.pack(fill="x")
-
-        def submit():
-            try:
-                conn = get_conn()
-                cur = conn.cursor()
-                cur.execute("INSERT INTO reviews (contract_id,reviewer_id,reviewee_id,rating,comment) VALUES (%s,%s,%s,%s,%s)",
-                            (int(cid_e.get()), self.user['user_id'], int(uid_e.get()), rv.get(), cmt.get("1.0", "end").strip()))
-                conn.commit()
-                conn.close()
-                messagebox.showinfo("Done", "Review submitted!")
-                self._reviews()
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
-
-        styled_btn(frm, "Submit Review", submit).pack(anchor="w", pady=(10, 0))
+                 font=FONT_H2, bg=BG, fg=SUCCESS).pack(anchor="e")
 
     def _logout(self):
         self.root.destroy()
